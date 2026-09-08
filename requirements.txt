@@ -1,5 +1,6 @@
 streamlit==1.38.0
 pandas==2.3.3
 plotly==5.24.0
+matplotlib==3.9.2
 gspread==5.12.4
 google-generativeai==0.8.3

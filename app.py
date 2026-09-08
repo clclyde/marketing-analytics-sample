@@ -150,8 +150,13 @@ def render_dashboard(df):
         st.plotly_chart(fig1, use_container_width=True)
 
     with c2:
-        by_channel = fdf.groupby("channel").agg(spend=("spend", "sum"), leads=("leads", "sum"), closed=("closed_deals", "sum")).reset_index()
+        by_channel = fdf.groupby("channel").agg(
+            spend=("spend", "sum"), leads=("leads", "sum"), closed=("closed_deals", "sum"),
+            revenue=("revenue", "sum"), impressions=("impressions", "sum"), clicks=("clicks", "sum"),
+        ).reset_index()
         by_channel["cpl"] = by_channel["spend"] / by_channel["leads"].replace(0, float("nan"))
+        by_channel["roas"] = by_channel["revenue"] / by_channel["spend"].replace(0, float("nan"))
+        by_channel["ctr"] = by_channel["clicks"] / by_channel["impressions"].replace(0, float("nan"))
         fig2 = px.bar(by_channel.sort_values("cpl"), x="channel", y="cpl", title="Cost per Lead by Channel", text_auto=".0f")
         fig2.update_layout(height=380, yaxis_title="Cost per Lead (₱)", plot_bgcolor="white", paper_bgcolor="white")
         st.plotly_chart(fig2, use_container_width=True)
@@ -173,10 +178,78 @@ def render_dashboard(df):
         camp["roas"] = (camp["revenue"] / camp["spend"].replace(0, float("nan"))).round(2)
         camp_display = camp[["channel", "campaign", "spend", "leads", "closed", "cpl", "roas"]].sort_values("roas", ascending=False)
         camp_display.columns = ["Channel", "Campaign", "Spend (₱)", "Leads", "Closed", "CPL (₱)", "ROAS"]
-        st.dataframe(
-            camp_display.style.format({"Spend (₱)": "₱{:,.0f}", "CPL (₱)": "₱{:,.0f}", "ROAS": "{:.1f}x"}),
-            use_container_width=True, height=380,
+        styled = camp_display.style.format({"Spend (₱)": "₱{:,.0f}", "CPL (₱)": "₱{:,.0f}", "ROAS": "{:.1f}x"})
+        styled = styled.background_gradient(subset=["ROAS"], cmap="RdYlGn")
+        styled = styled.background_gradient(subset=["CPL (₱)"], cmap="RdYlGn_r")
+        st.dataframe(styled, use_container_width=True, height=380)
+        st.caption("Color-coded: greener = better ROAS / lower CPL, redder = worse — for quick scanning across many campaigns.")
+
+    st.divider()
+
+    # ---- Channel & Campaign Deep-Dive ----
+    st.subheader("Channel & Campaign Deep-Dive")
+
+    d1, d2 = st.columns(2)
+    with d1:
+        fig4 = px.pie(
+            by_channel, values="spend", names="channel", hole=0.45,
+            title="Spend Allocation by Channel",
         )
+        fig4.update_traces(textinfo="percent+label")
+        fig4.update_layout(height=380, plot_bgcolor="white", paper_bgcolor="white", showlegend=False)
+        st.plotly_chart(fig4, use_container_width=True)
+
+    with d2:
+        fig5 = px.bar(
+            by_channel.sort_values("roas", ascending=False), x="channel", y="roas",
+            title="ROAS by Channel (log scale — Email's ROAS is 20-190x the paid channels')",
+            text_auto=".1f",
+        )
+        fig5.update_layout(
+            height=380, yaxis_title="ROAS (x, log scale)", yaxis_type="log", xaxis_title=None,
+            plot_bgcolor="white", paper_bgcolor="white",
+        )
+        st.plotly_chart(fig5, use_container_width=True)
+
+    d3, d4 = st.columns(2)
+    with d3:
+        fig6 = px.bar(
+            by_channel.sort_values("ctr", ascending=False), x="channel", y="ctr",
+            title="Click-Through Rate by Channel", text_auto=".1%",
+        )
+        fig6.update_layout(height=380, yaxis_title="CTR", yaxis_tickformat=".0%", xaxis_title=None, plot_bgcolor="white", paper_bgcolor="white")
+        st.plotly_chart(fig6, use_container_width=True)
+
+    with d4:
+        # Restrict to channels with a meaningful budget share (>=5% of total spend) — this chart is
+        # for budget-reallocation decisions, and near-zero-spend channels (Email, Organic Social)
+        # distort the axes with outlier ROAS without being a real "shift budget here" candidate.
+        budget_threshold = total_spend * 0.05
+        major_channels = by_channel[by_channel["spend"] >= budget_threshold]
+        fig7 = px.scatter(
+            major_channels, x="spend", y="roas", size="leads", color="channel", text="channel",
+            title="Efficiency Matrix: Spend vs. ROAS (major paid channels, bubble size = Leads)",
+        )
+        fig7.update_traces(textposition="top center")
+        fig7.update_layout(
+            height=380, xaxis_title="Spend (₱)", yaxis_title="ROAS (x)",
+            plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
+        )
+        st.plotly_chart(fig7, use_container_width=True)
+        st.caption("Excludes channels under 5% of total spend (e.g. Email, Organic Social) — see the ROAS chart and table for those.")
+
+    weekly = fdf.set_index("date").resample("W").agg(leads=("leads", "sum"), closed=("closed_deals", "sum")).reset_index()
+    fig8 = go.Figure()
+    fig8.add_trace(go.Scatter(x=weekly["date"], y=weekly["leads"], name="Leads", yaxis="y1", mode="lines+markers"))
+    fig8.add_trace(go.Scatter(x=weekly["date"], y=weekly["closed"], name="Closed Deals", yaxis="y2", mode="lines+markers"))
+    fig8.update_layout(
+        title="Weekly Trend: Leads vs. Closed Deals",
+        yaxis=dict(title="Leads"),
+        yaxis2=dict(title="Closed Deals", overlaying="y", side="right"),
+        legend=dict(orientation="h", y=1.15),
+        height=360, plot_bgcolor="white", paper_bgcolor="white",
+    )
+    st.plotly_chart(fig8, use_container_width=True)
 
     st.divider()
 

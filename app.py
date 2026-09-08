@@ -272,9 +272,40 @@ def render_chatbot(df):
     st.caption(
         "Ask about marketing terminology (CTR, CPL, CPA, ROAS, funnel stages) or about the campaign "
         "data itself — e.g. \"which campaign had the best ROAS in July?\" Powered by Gemini, reading "
-        "a snapshot of the current data (refreshes with the dashboard, every ~90s). AI-generated — "
+        "a snapshot of the data below (refreshes with the dashboard, every ~90s). AI-generated — "
         "verify important figures against the Dashboard tab before using them in a decision."
     )
+
+    # ---- Filters (independent of the Dashboard tab's filters) ----
+    col_f1, col_f2 = st.columns([1, 3])
+    with col_f1:
+        channels = st.multiselect(
+            "Channel", options=sorted(df["channel"].unique()), default=sorted(df["channel"].unique()),
+            key="chat_channels",
+        )
+    with col_f2:
+        date_range = st.date_input(
+            "Date range",
+            value=(df["date"].min().date(), df["date"].max().date()),
+            min_value=df["date"].min().date(),
+            max_value=df["date"].max().date(),
+            key="chat_date_range",
+        )
+
+    if len(date_range) == 2:
+        start, end = date_range
+        mask = (df["channel"].isin(channels)) & (df["date"].dt.date >= start) & (df["date"].dt.date <= end)
+        fdf = df[mask]
+    else:
+        fdf = df[df["channel"].isin(channels)]
+    st.caption(f"The assistant's answers below are scoped to this filter: {len(fdf):,} rows of data.")
+
+    filter_key = (tuple(sorted(channels)), str(date_range))
+    if st.session_state.get("chat_filter_key") != filter_key:
+        st.session_state["chat_filter_key"] = filter_key
+        st.session_state.pop("gemini_chat", None)
+        st.session_state.pop("chat_messages", None)
+        st.session_state.pop("chat_turns", None)
 
     col_clear, _ = st.columns([1, 5])
     with col_clear:
@@ -302,15 +333,18 @@ def render_chatbot(df):
     if prompt:
         st.session_state.chat_turns += 1
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
-        with st.spinner("Thinking..."):
-            try:
-                if "gemini_chat" not in st.session_state:
-                    data_context = build_data_context(df)
-                    st.session_state.gemini_chat = get_chat_session(data_context)
-                response = st.session_state.gemini_chat.send_message(prompt)
-                answer = (response.text or "").strip() or "I couldn't come up with an answer to that — try rephrasing?"
-            except Exception:
-                answer = "Sorry, I couldn't reach the AI assistant right now. Please try again in a moment."
+        if fdf.empty:
+            answer = "There's no data in the current filter selection above — widen the channel or date range and try again."
+        else:
+            with st.spinner("Thinking..."):
+                try:
+                    if "gemini_chat" not in st.session_state:
+                        data_context = build_data_context(fdf)
+                        st.session_state.gemini_chat = get_chat_session(data_context)
+                    response = st.session_state.gemini_chat.send_message(prompt)
+                    answer = (response.text or "").strip() or "I couldn't come up with an answer to that — try rephrasing?"
+                except Exception:
+                    answer = "Sorry, I couldn't reach the AI assistant right now. Please try again in a moment."
         st.session_state.chat_messages.append({"role": "assistant", "content": answer})
         st.rerun()
 

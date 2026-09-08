@@ -7,6 +7,7 @@ A quick, scoped sample built ahead of the marketing team meeting, to have someth
 - Built on **synthetic data** (not a real client), generated to look like realistic campaign performance across 5 channels (Google Ads, Meta Ads, Email, Organic Social, LinkedIn Ads) over ~90 days.
 - Live: pulls the source data from a Google Sheet on a short cache TTL (~90s), so the dashboard reflects new rows without a redeploy.
 - Clean KPI calculations (CTR, CPL, CPA, ROAS), a funnel view, per-campaign breakdown, and an insight summary genuinely generated fresh by Gemini from the current KPIs each time the cache refreshes.
+- A second tab, "Ask the Data", is a Gemini-powered chatbot that can answer questions about marketing terminology (CTR, CPL, CPA, ROAS, funnel stages) and about the data itself, grounded in the same live snapshot the dashboard uses.
 
 ## Why this architecture, specifically
 

@@ -98,13 +98,17 @@ def render_dashboard(df):
     # ---- Filters ----
     col_f1, col_f2 = st.columns([1, 3])
     with col_f1:
-        channels = st.multiselect("Channel", options=sorted(df["channel"].unique()), default=sorted(df["channel"].unique()))
+        channels = st.multiselect(
+            "Channel", options=sorted(df["channel"].unique()), default=sorted(df["channel"].unique()),
+            key="dashboard_channels",
+        )
     with col_f2:
         date_range = st.date_input(
             "Date range",
             value=(df["date"].min().date(), df["date"].max().date()),
             min_value=df["date"].min().date(),
             max_value=df["date"].max().date(),
+            key="dashboard_date_range",
         )
 
     if len(date_range) == 2:
@@ -422,20 +426,26 @@ def render_chatbot(df):
         st.rerun()
 
 
-df = load_data()
-
 st.title("Automated Marketing Analytics — Sample Dashboard")
 st.caption(
     "Live dashboard pulling from a shared Google Sheet, with automatically "
     "refreshing KPIs, charts, and an LLM-generated insight summary."
 )
 col_refresh_caption, col_refresh_btn = st.columns([5, 1])
-with col_refresh_caption:
-    st.caption(f"Data last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M')} (auto-refreshes every ~{DATA_TTL_SECONDS}s)")
 with col_refresh_btn:
     if st.button("🔄 Manually refresh", use_container_width=True):
         load_data.clear()
-        st.rerun()
+        st.toast("Refreshed with the latest data from the Sheet.", icon="✅")
+
+# Placed after the refresh button so a click clears the cache before this call, refetching
+# immediately within the same run (avoids an extra st.rerun(), which would otherwise skip past
+# the filter widgets below and reset them, since Streamlit drops session state for widgets that
+# aren't rendered on a given run).
+df = load_data()
+
+with col_refresh_caption:
+    st.caption(f"Data last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M')} (auto-refreshes every ~{DATA_TTL_SECONDS}s)")
+
 st.warning(
     "**Sample dashboard, built on synthetic data.** Campaign numbers below are generated for "
     "demonstration, not real spend or leads. Revenue/ROAS assume an illustrative ₱8,500 average "

@@ -11,6 +11,35 @@ st.set_page_config(page_title="Automated Marketing Analytics — Sample", layout
 DATA_TTL_SECONDS = 90
 INSIGHT_TTL_SECONDS = 120
 GEMINI_MODEL = "gemini-3.6-flash"
+MAX_CHAT_TURNS_PER_SESSION = 20
+
+
+def check_password():
+    """Gate the whole app behind a shared password stored in secrets (APP_PASSWORD)."""
+    app_password = st.secrets.get("APP_PASSWORD")
+    if not app_password:
+        # No password configured — fail open only for local dev convenience.
+        return True
+
+    def password_entered():
+        if st.session_state.get("password_input") == app_password:
+            st.session_state["password_correct"] = True
+            st.session_state.pop("password_input", None)
+        else:
+            st.session_state["password_correct"] = False
+
+    if st.session_state.get("password_correct"):
+        return True
+
+    st.title("Automated Marketing Analytics — Sample Dashboard")
+    st.text_input("Enter the access password", type="password", on_change=password_entered, key="password_input")
+    if st.session_state.get("password_correct") is False:
+        st.error("Incorrect password.")
+    return False
+
+
+if not check_password():
+    st.stop()
 
 GLOSSARY = """
 You are a helpful marketing analytics assistant embedded in a dashboard. Answer questions about
@@ -233,7 +262,8 @@ def render_chatbot(df):
     st.caption(
         "Ask about marketing terminology (CTR, CPL, CPA, ROAS, funnel stages) or about the campaign "
         "data itself — e.g. \"which campaign had the best ROAS in July?\" Powered by Gemini, reading "
-        "a snapshot of the current data (refreshes with the dashboard, every ~90s)."
+        "a snapshot of the current data (refreshes with the dashboard, every ~90s). AI-generated — "
+        "verify important figures against the Dashboard tab before using them in a decision."
     )
 
     col_clear, _ = st.columns([1, 5])
@@ -241,17 +271,26 @@ def render_chatbot(df):
         if st.button("🔄 New conversation"):
             st.session_state.pop("chat_messages", None)
             st.session_state.pop("gemini_chat", None)
+            st.session_state.pop("chat_turns", None)
             st.rerun()
 
     if "chat_messages" not in st.session_state:
         st.session_state.chat_messages = []
+    if "chat_turns" not in st.session_state:
+        st.session_state.chat_turns = 0
 
     for msg in st.session_state.chat_messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
+    turns_left = MAX_CHAT_TURNS_PER_SESSION - st.session_state.chat_turns
+    if turns_left <= 0:
+        st.info("This conversation has reached its message limit. Click \"New conversation\" above to continue asking questions.")
+        return
+
     prompt = st.chat_input("Ask a question about the data or terminology...")
     if prompt:
+        st.session_state.chat_turns += 1
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
         with st.spinner("Thinking..."):
             try:
@@ -274,6 +313,12 @@ st.caption(
     "refreshing KPIs, charts, and an LLM-generated insight summary."
 )
 st.caption(f"Data last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M')} (auto-refreshes every ~{DATA_TTL_SECONDS}s)")
+st.warning(
+    "**Sample dashboard, built on synthetic data.** Campaign numbers below are generated for "
+    "demonstration, not real spend or leads. Revenue/ROAS assume an illustrative ₱8,500 average "
+    "deal value. This is a proof of concept for the underlying architecture, not a live client report.",
+    icon="ℹ️",
+)
 
 tab_dashboard, tab_chat = st.tabs(["📊 Dashboard", "💬 Ask the Data"])
 

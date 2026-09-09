@@ -13,6 +13,53 @@ INSIGHT_TTL_SECONDS = 120
 GEMINI_MODEL = "gemini-3.6-flash"
 MAX_CHAT_TURNS_PER_SESSION = 20
 
+TERM_GLOSSARY = {
+    "CTR": {
+        "name": "Click-Through Rate",
+        "formula": "clicks ÷ impressions",
+        "meaning": "The share of people who saw an ad and actually clicked it. A higher CTR usually "
+        "means the ad creative or targeting is resonating with the audience.",
+    },
+    "CPL": {
+        "name": "Cost per Lead",
+        "formula": "spend ÷ leads",
+        "meaning": "The average amount spent to generate one lead. A lower CPL means leads are being "
+        "acquired more cheaply — more efficient spend.",
+    },
+    "CPA": {
+        "name": "Cost per Acquisition",
+        "formula": "spend ÷ closed deals",
+        "meaning": "The average amount spent to win one closed deal, not just a lead. A lower CPA "
+        "means the channel converts spend into actual sales more efficiently.",
+    },
+    "ROAS": {
+        "name": "Return on Ad Spend",
+        "formula": "revenue ÷ spend",
+        "meaning": "For every ₱1 spent, how many pesos come back in revenue. A higher ROAS means the "
+        "channel returns more value relative to what's spent on it.",
+    },
+}
+
+
+def term_popover(term):
+    """Small clickable trigger next to a jargon term, revealing its definition and how to read it."""
+    info = TERM_GLOSSARY[term]
+    with st.popover(f"ℹ️ {term}"):
+        st.markdown(f"**{info['name']}** ({term})")
+        st.caption(f"Formula: {info['formula']}")
+        st.write(info["meaning"])
+
+
+def chart_header(title, term=None):
+    """Bold chart title with an optional glossary popover, replacing Plotly's built-in (non-clickable) title."""
+    if term:
+        col_title, col_pop = st.columns([5, 1])
+        col_title.markdown(f"**{title}**")
+        with col_pop:
+            term_popover(term)
+    else:
+        st.markdown(f"**{title}**")
+
 
 def check_password():
     """Gate the whole app behind a shared password stored in secrets (APP_PASSWORD)."""
@@ -41,7 +88,14 @@ def check_password():
 if not check_password():
     st.stop()
 
-GLOSSARY = """
+def _glossary_terminology_lines():
+    return "\n".join(
+        f"- {term} ({info['name']}): {info['formula']}. {info['meaning']}"
+        for term, info in TERM_GLOSSARY.items()
+    )
+
+
+GLOSSARY = f"""
 You are a helpful marketing analytics assistant embedded in a dashboard. Your scope is strictly
 limited to two topics: (1) the campaign data provided below, and (2) marketing/advertising
 terminology and concepts in general (e.g. CTR, CPL, CPA, ROAS, funnels, attribution, channel
@@ -58,11 +112,8 @@ data and terminology, and suggest they rephrase toward that if relevant. Do not 
 off-topic request even partially.
 
 Terminology used in this dashboard:
-- CTR (Click-Through Rate): clicks / impressions.
-- CPL (Cost per Lead): spend / leads.
-- CPA (Cost per Acquisition): spend / closed deals.
-- ROAS (Return on Ad Spend): revenue / spend. Revenue here is illustrative, computed as
-  closed_deals * ₱8,500 average deal value.
+{_glossary_terminology_lines()}
+- ROAS's revenue is illustrative, computed as closed_deals * ₱8,500 average deal value.
 - Funnel stages, in order: Impressions -> Clicks -> Leads -> Closed Deals.
 - Channels in this dataset: Google Ads, Meta Ads, Email, Organic Social, LinkedIn Ads.
 """.strip()
@@ -130,8 +181,14 @@ def render_dashboard(df):
     k1.metric("Total Spend", f"₱{total_spend:,.0f}")
     k2.metric("Total Leads", f"{total_leads:,.0f}")
     k3.metric("Closed Deals", f"{total_closed:,.0f}")
-    k4.metric("Avg. Cost per Lead", f"₱{avg_cpl:,.0f}")
-    k5.metric("ROAS", f"{avg_roas:.1f}x")
+    with k4:
+        st.metric("Avg. Cost per Lead", f"₱{avg_cpl:,.0f}")
+        term_popover("CPL")
+    with k5:
+        st.metric("ROAS", f"{avg_roas:.1f}x")
+        term_popover("ROAS")
+
+    st.caption("Click any ℹ️ on this page for a plain-English definition of that term.")
 
     st.divider()
 
@@ -161,7 +218,8 @@ def render_dashboard(df):
         by_channel["cpl"] = by_channel["spend"] / by_channel["leads"].replace(0, float("nan"))
         by_channel["roas"] = by_channel["revenue"] / by_channel["spend"].replace(0, float("nan"))
         by_channel["ctr"] = by_channel["clicks"] / by_channel["impressions"].replace(0, float("nan"))
-        fig2 = px.bar(by_channel.sort_values("cpl"), x="channel", y="cpl", title="Cost per Lead by Channel", text_auto=".0f")
+        chart_header("Cost per Lead by Channel", "CPL")
+        fig2 = px.bar(by_channel.sort_values("cpl"), x="channel", y="cpl", text_auto=".0f")
         fig2.update_layout(height=380, yaxis_title="Cost per Lead (₱)", plot_bgcolor="white", paper_bgcolor="white")
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -186,7 +244,12 @@ def render_dashboard(df):
         styled = styled.background_gradient(subset=["ROAS"], cmap="RdYlGn")
         styled = styled.background_gradient(subset=["CPL (₱)"], cmap="RdYlGn_r")
         st.dataframe(styled, use_container_width=True, height=380)
-        st.caption("Color-coded: greener = better ROAS / lower CPL, redder = worse — for quick scanning across many campaigns.")
+        cap_col, cap_pop1, cap_pop2 = st.columns([6, 1, 1])
+        cap_col.caption("Color-coded: greener = better ROAS / lower CPL, redder = worse — for quick scanning across many campaigns.")
+        with cap_pop1:
+            term_popover("CPL")
+        with cap_pop2:
+            term_popover("ROAS")
 
     st.divider()
 
@@ -204,9 +267,9 @@ def render_dashboard(df):
         st.plotly_chart(fig4, use_container_width=True)
 
     with d2:
+        chart_header("ROAS by Channel", "ROAS")
         fig5 = px.bar(
             by_channel.sort_values("roas", ascending=False), x="channel", y="roas",
-            title="ROAS by Channel (log scale — Email's ROAS is 20-190x the paid channels')",
             text_auto=".1f",
         )
         fig5.update_layout(
@@ -214,12 +277,14 @@ def render_dashboard(df):
             plot_bgcolor="white", paper_bgcolor="white",
         )
         st.plotly_chart(fig5, use_container_width=True)
+        st.caption("Log scale — Email's ROAS is 20-190x the paid channels'.")
 
     d3, d4 = st.columns(2)
     with d3:
+        chart_header("Click-Through Rate by Channel", "CTR")
         fig6 = px.bar(
             by_channel.sort_values("ctr", ascending=False), x="channel", y="ctr",
-            title="Click-Through Rate by Channel", text_auto=".1%",
+            text_auto=".1%",
         )
         fig6.update_layout(height=380, yaxis_title="CTR", yaxis_tickformat=".0%", xaxis_title=None, plot_bgcolor="white", paper_bgcolor="white")
         st.plotly_chart(fig6, use_container_width=True)
@@ -230,9 +295,9 @@ def render_dashboard(df):
         # distort the axes with outlier ROAS without being a real "shift budget here" candidate.
         budget_threshold = total_spend * 0.05
         major_channels = by_channel[by_channel["spend"] >= budget_threshold]
+        chart_header("Efficiency Matrix: Spend vs. ROAS (major paid channels, bubble size = Leads)", "ROAS")
         fig7 = px.scatter(
             major_channels, x="spend", y="roas", size="leads", color="channel", text="channel",
-            title="Efficiency Matrix: Spend vs. ROAS (major paid channels, bubble size = Leads)",
         )
         fig7.update_traces(textposition="top center")
         fig7.update_layout(

@@ -10,7 +10,7 @@ st.set_page_config(page_title="Automated Marketing Analytics — Sample", layout
 
 DATA_TTL_SECONDS = 90
 INSIGHT_TTL_SECONDS = 120
-GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 MAX_CHAT_TURNS_PER_SESSION = 20
 
 TERM_GLOSSARY = {
